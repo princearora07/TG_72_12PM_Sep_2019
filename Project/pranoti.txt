@@ -1,2 +1,115 @@
 hello
 hi
+
+=== login to hive and run below mentioned commands:
+create database if not exists dl_stg_s1 location '/user/dl/stg/dl_stg_s1.db';
+use dl_stg_s1;
+create external table customers(custno string,
+ firstname string, lastname string,gender string,
+age string,profession string,contactNo string,
+emailId string,
+city string, state string,
+isActive string ,createdDate string, UpdatedDate string)
+row format delimited fields terminated by '|'
+location '/user/dl/stg/dl_stg_s1.db/customers';
+
+
+create database if not exists dl_ds_s1 location '/user/dl/ds/dl_ds_s1.db';
+use dl_ds_s1;
+
+create external table customers(custno string,
+ firstname string, lastname string,gender string,
+age string,profession string,contactNo string,
+emailId string,
+city string, state string,
+isActive string ,createdDate string, UpdatedDate string)
+partitioned by (load_Date string)
+stored as orc
+location '/user/dl/ds/dl_ds_s1.db/customers';
+
+=========== rum below mentioned commands in terminal (Not in hive shell)
+vi customers.txt
+1|Leslie|Bass|F|27|B|37307|endslost@everyma1l.org|Gibson|Dellwood|Y|2017-09-21 12:38:22|2017-10-18 12:12:28
+2|Judy|Burks|M|53|S|84759|rfleming@hotma1l.co.uk|Suwanee|Trabue|Y|2017-05-22 05:29:22|2017-10-18 12:12:28
+3|Marsha|Doyle|F|48|B|80932|arethe53@ma1lbox.net|Perry|Moxadarla|Y|2017-09-03 12:11:29|2017-10-18 12:12:28
+4|Alexis|Battle|M|27|S|71701|ofcame@ma1lbox.org|Morven|Dennis|Y|2017-02-16 04:05:35|2017-10-18 12:12:28
+5|Martha|Combs|F|49|B|83947|camedied@everyma1l.us|Ocilla|Greenwood|Y|2017-05-15 07:34:35|2017-10-18 12:12:28
+
+hadoop fs -put customers.txt /user/dl/stg/dl_stg_s1.db/customers
+
+=== validate result (login to hive)
+use dl_stg_s1;
+select * from customers limit 5;
+
+
+set hive.exec.dynamic.partition.mode=nonstrict;
+insert into dl_ds_s1.customers partition(load_date) select *,current_date() as load_date from dl_stg_s1.customers distribute by load_date;
+
+=== truncate staging
+hadoop fs -rm /user/dl/stg/dl_stg_s1.db/customers/*
+
+*/
+
+===load new data in staging
+vi customers1.txt
+5|Martha|Combs|F|49|B|83947|test@test.com|Ocilla|Greenwood|Y|2017-05-15 07:34:35|2019-10-18 12:12:28
+6|Leslie|Bass|F|27|B|37307|test1@everyma1l.org|Gibson|Dellwood|Y|2017-09-21 12:38:22|2017-10-18 12:12:28
+
+
+== load data in staging table
+hadoop fs -put customers1.txt /user/dl/stg/dl_stg_s1.db/customers
+== validate result in staging in hive
+select * from dl_stg_s1.customers limit 5;
+
+== load data from staging to data store
+set hive.exec.dynamic.partition.mode=nonstrict;
+
+insert into dl_ds_s1.customers partition(load_date)
+select u.custno,u.firstname,u.lastname,u.gender,
+u.age,u.profession,u.contactno,u.emailid,u.city,u.state,u.isactive,
+u.createddate,u.updateddate, date_add(current_date(),1) as load_date from
+(select *, row_number() over (partition by t.custno order by t.updateddate desc) as row_num  from
+(
+select *,'' as load_date from dl_stg_s1.customers
+union all select * from dl_ds_s1.customers)t)u
+where u.row_num = 1
+distribute by load_date;
+
+=============================
+create database cdm location '/user/dl/cdm.db';
+use cdm;
+create table customers
+(custno string,
+ name string,gender string,
+isActive string )
+partitioned by (load_date string);
+
+set hive.exec.dynamic.partition.mode=nonstrict;
+
+insert into cdm.customers partition (load_date)
+select custno, concat(firstname,lastname) as name ,
+case when gender = 'M' then 'Male'
+when gender = 'F' then 'Female'
+else 'N/A'
+end as gender,isActive, load_date from dl_ds_s1.customers
+distribute by load_date;
+
+======================================
+
+create database vdm location '/user/dl/cdm.db';
+create view if not exists vdm.view_customers as
+select * from cdm.customers;
+
+vi vdm_data_load.sh
+export runtime=`date -u +"%Y%m%d%H%M%S"`
+export log_file=/home/cloudera/Desktop/delta_$runtime.log
+exec &> ${log_file}
+export SPARK_HOME=/usr/lib/spark/lib
+echo "execution started..."
+max_val=`hive -e "select max(load_date) from cdm.customers ;"`
+echo $max_val
+echo "execution completed..."
+hive -e "drop view if exists vdm.view_customers;"
+hive -e "create view if not exists vdm.view_customers as
+select * from cdm.customers where load_date = '$max_val'";
+echo "partition added in view successfully.."

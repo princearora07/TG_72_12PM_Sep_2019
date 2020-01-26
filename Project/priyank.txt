@@ -1,1 +1,11 @@
-Hello
+:require C:/Users/Owner/Documents/BigData/Module-5_Hadoop/Spark/XMLParser/spark-xml-0.5.0.jar
+
+val products = spark.read.format("com.databricks.spark.xml").option("rowTag","product").load("C:/Users/Owner/Documents/BigData/Module-5_Hadoop/Spark/XMLParser/products.xml")
+
+products.show(2)
+val test = products.select("Description","createdDate")
+test.show(2)
+
+products.createOrReplaceTempView("prod")
+val output = spark.sql("select * from prod")
+val output = spark.sql("select Description,createdDate from prod")

@@ -1,3 +1,5 @@
+HIVE DDL Script:
+
 /home/cloudera/project/s1/hql/ddl_customers.hql
 create database if not exists stg_s1 location '/user/dl/stg/stg_s1';
 use stg_s1;

@@ -1,2 +1,26 @@
-Hello
-Welcome to GIT
+create database if not exists dl_stg_s1 location '/user/dl/stg/dl_stg_s1.db';
+use dl_stg_s1;
+
+create external table customers(custno string,
+firstname string, lastname string,gender string,
+age string,profession string,contactNo string,
+emailId string,
+city string, state string,
+isActive string ,createdDate string, UpdatedDate string)
+row format delimited fields terminated by '|'
+location '/user/dl/stg/dl_stg_s1.db/customers';
+
+
+create database if not exists dl_ds_s1 location '/user/dl/ds/dl_ds_s1.db';
+use dl_ds_s1;
+
+
+create external table customers(custno string,
+ firstname string, lastname string,gender string,
+age string,profession string,contactNo string,
+emailId string,
+city string, state string,
+isActive string ,createdDate string, UpdatedDate string)
+partitioned by (load_Date string)
+stored as orc
+location '/user/dl/ds/dl_ds_s1.db/customers';
